@@ -19,10 +19,12 @@ def send_telegram(msg):
         pass
 
 if __name__ == "__main__":
-    send_telegram("Heroku Bot Active! Live log printing enabled.")
+    # This sends ONLY once when the server boots up
+    send_telegram("🚀 Heroku Bot Active! Tracking the 8TB package now...")
+    
     while True:
         try:
-            # This line will print to your Heroku Logs view every 45 seconds
+            # Keeps the 45-second updates hidden inside Heroku's internal logs view
             print(f"Checking store page... Target: {TARGET_PLAN}", flush=True)
             
             res = requests.get(URL, headers=headers, timeout=15)
@@ -38,9 +40,9 @@ if __name__ == "__main__":
                         
                         if "0 available" not in status_text and "out of stock" not in status_text:
                             print(f"!!! MATCH FOUND !!! Sending Telegram Alert.", flush=True)
+                            # Telegram only gets pinged here if it is actually available!
                             send_telegram(f"🚨 *8TB IN STOCK ALERT!* 🚨\n\n📦 *Plan:* {TARGET_PLAN}\n🔗 [Order Now]({URL})")
                         else:
-                            # This prints quietly in your Heroku dashboard logs
                             print(f"Result: {TARGET_PLAN} is currently Out of Stock.", flush=True)
                             
         except Exception as e:
