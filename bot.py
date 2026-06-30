@@ -1,7 +1,6 @@
 import time
 import requests
 import os
-from bs4 import BeautifulSoup
 
 TG_TOKEN = os.environ.get("TG_TOKEN")
 TG_CHAT_ID = os.environ.get("TG_CHAT_ID")
@@ -19,33 +18,40 @@ def send_telegram(msg):
         pass
 
 if __name__ == "__main__":
-    # This sends ONLY once when the server boots up
-    send_telegram("🚀 Heroku Bot Active! Tracking the 8TB package now...")
+    send_telegram("🚀 Heroku Bot Re-Aligned! Tracking updated layout precisely...")
     
     while True:
         try:
-            # Keeps the 45-second updates hidden inside Heroku's internal logs view
-            print(f"Checking store page... Target: {TARGET_PLAN}", flush=True)
-            
+            print(f"Checking updated page text... Target: {TARGET_PLAN}", flush=True)
             res = requests.get(URL, headers=headers, timeout=15)
+            
             if res.status_code == 200:
-                soup = BeautifulSoup(res.text, 'html.parser')
-                products = soup.find_all('div', class_='product')
+                raw_html = res.text
                 
-                for product in products:
-                    product_text = product.get_text()
+                if TARGET_PLAN in raw_html:
+                    parts = raw_html.split(TARGET_PLAN)
+                    status_chunk = parts[1][:300].lower()
                     
-                    if TARGET_PLAN in product_text:
-                        status_text = product_text.lower()
-                        
-                        if "0 available" not in status_text and "out of stock" not in status_text:
-                            print(f"!!! MATCH FOUND !!! Sending Telegram Alert.", flush=True)
-                            # Telegram only gets pinged here if it is actually available!
-                            send_telegram(f"🚨 *8TB IN STOCK ALERT!* 🚨\n\n📦 *Plan:* {TARGET_PLAN}\n🔗 [Order Now]({URL})")
-                        else:
-                            print(f"Result: {TARGET_PLAN} is currently Out of Stock.", flush=True)
-                            
+                    print(f"Inspecting Text Block: {status_chunk[:120]}...", flush=True)
+                    
+                    # 1. Look for definitive unavailable text strings
+                    is_unavailable = "0 available" in status_chunk or "out of stock" in status_chunk or "out stock" in status_chunk
+                    
+                    # 2. Look for explicit indicators that it IS available (like "open", "available", or "get one")
+                    is_available_keywords = "available" in status_chunk or "open" in status_chunk or "get one" in status_chunk or "order" in status_chunk
+                    
+                    # ONLY send a Telegram alert if it is not unavailable AND we actually see active order/stock phrasing
+                    if not is_unavailable and is_available_keywords:
+                        print("!!! 8TB SEEDBOX DETECTED IN STOCK !!! Sending Telegram Alert.", flush=True)
+                        send_telegram(f"🚨 *8TB IN STOCK ALERT!* 🚨\n\n📦 *Plan:* {TARGET_PLAN}\n🔗 [Order Now]({URL})")
+                    else:
+                        print(f"Result: {TARGET_PLAN} is explicitly out of stock or reading layout noise.", flush=True)
+                else:
+                    print(f"Warning: '{TARGET_PLAN}' text not found on page.", flush=True)
+            else:
+                print(f"Connection Warning: HTTP Status {res.status_code}", flush=True)
+                
         except Exception as e:
-            print(f"Error during check: {e}", flush=True)
+            print(f"Error during execution loop: {e}", flush=True)
             
         time.sleep(CHECK_INTERVAL)
