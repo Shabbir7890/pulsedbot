@@ -24,7 +24,7 @@ def send_telegram(msg):
         pass
 
 if __name__ == "__main__":
-    # Your standard, static welcome message
+    # Standard static welcome message
     send_telegram("🚀 Heroku Bot Active! Tracking Pulsed Media packages now...")
     
     # State flags to ensure you only get notified EXACTLY ONCE per milestone tier
@@ -98,6 +98,6 @@ if __name__ == "__main__":
                 print(f"Network Warning: HTTP Code {res.status_code}", flush=True)
                 
         except Exception as e:
-            print(f"Error during runtime matrix loop: {e}", flush=True)
+            print(f"Error during stock check execution loop: {e}", flush=True)
             
         time.sleep(CHECK_INTERVAL)
