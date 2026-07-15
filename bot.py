@@ -4,7 +4,7 @@ import os
 
 TG_TOKEN = os.environ.get("TG_TOKEN")
 TG_CHAT_ID = os.environ.get("TG_CHAT_ID")
-CHECK_INTERVAL = 45
+CHECK_INTERVAL = 30
 
 # Stock Tracking Settings
 TARGET_PLANS = [
