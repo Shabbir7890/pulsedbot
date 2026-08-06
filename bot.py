@@ -24,47 +24,40 @@ def send_telegram(msg):
         pass
 
 if __name__ == "__main__":
-    # Standard static welcome message
-    send_telegram("🚀 Heroku Bot Active! Tracking Pulsed Media packages now...")
+    send_telegram("🚀 Heroku Bot Active! Tracking MRR milestones and stock drops...")
     
-    # State flags to ensure you only get notified EXACTLY ONCE per milestone tier
-    notified_490 = False
-    notified_495 = False
-    notified_499 = False
+    # Limits the bot to a maximum of 2 alerts for the Revenue milestone to prevent spam
+    revenue_alerts_sent = 0
     
     while True:
-        # --- TASK 1: CHECK CAMPAIGN MILESTONES ---
+        # --- TASK 1: CHECK REVENUE (MRR) MILESTONES ---
         try:
-            # Only request the campaign URL if at least one milestone has not fired yet
-            if not notified_490 or not notified_495 or not notified_499:
-                print("Checking campaign milestone metrics...", flush=True)
+            # Only hit the campaign page if we haven't maxed out our 2 alerts yet
+            if revenue_alerts_sent < 2:
+                print("Checking campaign MRR (Revenue) metrics...", flush=True)
                 camp_res = requests.get(CAMPAIGN_URL, headers=headers, timeout=15)
+                
                 if camp_res.status_code == 200:
                     camp_html = camp_res.text
                     
-                    if "Claimed in the campaign:" in camp_html:
-                        milestone_part = camp_html.split("Claimed in the campaign:")[1]
-                        raw_count = milestone_part.split("/")[0].strip()
-                        clean_count = "".join(c for c in raw_count if c.isdigit())
+                    if "MRR: €" in camp_html:
+                        # Extract the MRR value from the new HTML layout
+                        mrr_part = camp_html.split("MRR: €")[1]
+                        # Isolate the number string (stops at HTML tags, periods, or middle dots)
+                        raw_mrr = mrr_part.split("<")[0].split("·")[0].strip()
                         
-                        if clean_count:
-                            total_claims = int(clean_count)
-                            print(f"Current campaign total claims: {total_claims}", flush=True)
+                        # Remove spaces (like "1 591.96") and keep only digits/decimals
+                        clean_mrr = "".join(c for c in raw_mrr if c.isdigit() or c == '.')
+                        clean_mrr = clean_mrr.rstrip('.') # Clean trailing periods
+                        
+                        if clean_mrr:
+                            total_mrr = float(clean_mrr)
+                            print(f"Current campaign MRR: €{total_mrr}", flush=True)
                             
-                            # Check 490 Tier
-                            if total_claims >= 490 and not notified_490:
-                                send_telegram(f"🏆 *MILESTONE REACHED!* 🏆\n\nThe total campaign claims have reached *{total_claims}* (Target: 490).\n🔗 [View Campaign]({CAMPAIGN_URL})")
-                                notified_490 = True
-                                
-                            # Check 495 Tier
-                            if total_claims >= 495 and not notified_495:
-                                send_telegram(f"🏆 *MILESTONE REACHED!* 🏆\n\nThe total campaign claims have reached *{total_claims}* (Target: 495).\n🔗 [View Campaign]({CAMPAIGN_URL})")
-                                notified_495 = True
-                                
-                            # Check 499 Tier
-                            if total_claims >= 499 and not notified_499:
-                                send_telegram(f"🏆 *MILESTONE REACHED!* 🏆\n\nThe total campaign claims have reached *{total_claims}* (Target: 499).\n🔗 [View Campaign]({CAMPAIGN_URL})")
-                                notified_499 = True
+                            # Check 1950+ Euro Tier
+                            if total_mrr >= 1950.0 and revenue_alerts_sent < 2:
+                                send_telegram(f"💰 *REVENUE MILESTONE REACHED!* 💰\n\nThe campaign MRR has hit *€{total_mrr}* (Target: €1950+).\n🔗 [View Campaign]({CAMPAIGN_URL})")
+                                revenue_alerts_sent += 1
                                 
         except Exception as e:
             print(f"Error reading milestone metrics: {e}", flush=True)
