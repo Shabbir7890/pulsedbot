@@ -44,11 +44,10 @@ def parse_campaign_data():
         if res.status_code == 200:
             html = res.text
             
-            # MRR parse
-            if "MRR: €" in html:
-                mrr_part = html.split("MRR: €")[1]
-                raw_mrr = mrr_part.split("<")[0].split("·")[0].strip()
-                clean_mrr = "".join(c for c in raw_mrr if c.isdigit() or c == '.').rstrip('.')
+            # Flexible MRR regex: handles "MRR:", optional tags/entities, and European spaces
+            mrr_match = re.search(r'MRR:[^0-9€&]*[€&euro;]?\s*([0-9\s]+(?:\.[0-9]+)?)', html, re.IGNORECASE)
+            if mrr_match:
+                clean_mrr = mrr_match.group(1).replace(" ", "").strip()
                 if clean_mrr:
                     stats["mrr"] = float(clean_mrr)
 
@@ -60,10 +59,16 @@ def parse_campaign_data():
                 if clean_claims:
                     stats["claims"] = int(clean_claims)
 
-            # Referrals parse
-            if "REFERRAL MILESTONES" in html.upper():
-                chunk = html[html.upper().find("REFERRAL MILESTONES"):][:1200]
-                ref_match = re.search(r'(\d+)\s+so far', chunk, re.IGNORECASE)
+            # Flexible Referrals regex: searches referral section for current tally
+            if "REFERRAL" in html.upper():
+                ref_chunk = html[html.upper().find("REFERRAL"):html.upper().find("REFERRAL") + 2500]
+                
+                # Check for "X so far", "X referrals", or progress "X /"
+                ref_match = re.search(r'(\d+)\s*(?:so far|referrals?|confirmed|\/)', ref_chunk, re.IGNORECASE)
+                if not ref_match:
+                    # Fallback: check percentage and progress bar markers
+                    ref_match = re.search(r'—\s*(\d+)', ref_chunk)
+
                 if ref_match:
                     stats["referrals"] = int(ref_match.group(1))
     except Exception as e:
@@ -76,9 +81,6 @@ def handle_stats_command(state):
     claims_val = f"{stats['claims']}" if stats["claims"] is not None else "Pending..."
     refs_val = f"{stats['referrals']}" if stats["referrals"] is not None else "Pending..."
 
-    # Pre-format status strings without nested f-string quotes
-    t1_alerts = state.get("revenue_alerts_sent", 0)
-    t1_status = "✅ Alert Sent" if t1_alerts >= 2 else f"{t1_alerts}/2 Alerts"
     t2_status = "✅ Reached" if state.get("notified_mrr_3985") else "⏳ Pending"
     claims_status = "✅ Reached" if state.get("notified_claims_1490") else "⏳ Pending"
     ref1_status = "✅ Reached" if state.get("notified_ref_143") else "⏳ Pending"
@@ -89,8 +91,7 @@ def handle_stats_command(state):
         "━━━━━━━━━━━━━━━━━━━\n\n"
         "💰 <b>MRR Progress</b>\n"
         f"• Current: <b>{mrr_val}</b>\n"
-        f"• Target 1 (€1950): {t1_status}\n"
-        f"• Target 2 (€3985): {t2_status}\n\n"
+        f"• Target (€3985): {t2_status}\n\n"
         "🏆 <b>Claims Progress</b>\n"
         f"• Current Claims: <b>{claims_val}</b>\n"
         f"• Target (1490): {claims_status}\n\n"
@@ -134,7 +135,6 @@ if __name__ == "__main__":
     send_telegram("🚀 Heroku Bot Active! Tracking packages & commands ready.\nUse /stats to view milestones.")
 
     state = {
-        "revenue_alerts_sent": 0,
         "notified_mrr_3985": False,
         "notified_claims_1490": False,
         "notified_ref_143": False,
@@ -155,8 +155,7 @@ if __name__ == "__main__":
         # --- TASK 1: CHECK CAMPAIGN MILESTONES ---
         try:
             needs_camp_check = (
-                (state["revenue_alerts_sent"] < 2)
-                or (not state["notified_mrr_3985"])
+                (not state["notified_mrr_3985"])
                 or (not state["notified_claims_1490"])
                 or (not state["notified_ref_143"])
                 or (not state["notified_ref_145"])
@@ -165,25 +164,21 @@ if __name__ == "__main__":
             if needs_camp_check:
                 camp_data = parse_campaign_data()
 
-                # MRR
+                # MRR €3985 Milestone Check
                 if camp_data["mrr"] is not None:
                     curr_mrr = camp_data["mrr"]
-                    if curr_mrr >= 1950.0 and state["revenue_alerts_sent"] < 2:
-                        send_telegram(f"💰 <b>REVENUE MILESTONE REACHED!</b> 💰\n\nThe campaign MRR has hit <b>€{curr_mrr}</b> (Target: €1950+).\n🔗 <a href='{CAMPAIGN_URL}'>View Campaign</a>")
-                        state["revenue_alerts_sent"] += 1
-
                     if curr_mrr >= 3985.0 and not state["notified_mrr_3985"]:
                         send_telegram(f"💰 <b>REVENUE MILESTONE REACHED!</b> 💰\n\nThe campaign MRR has reached <b>€{curr_mrr}</b> (Target: €3985+).\n🔗 <a href='{CAMPAIGN_URL}'>View Campaign</a>")
                         state["notified_mrr_3985"] = True
 
-                # Claims
+                # Claims 1490 Milestone Check
                 if camp_data["claims"] is not None and not state["notified_claims_1490"]:
                     curr_claims = camp_data["claims"]
                     if curr_claims >= 1490:
                         send_telegram(f"🏆 <b>CLAIM MILESTONE REACHED!</b> 🏆\n\nTotal claims have reached <b>{curr_claims}</b> (Target: 1490).\n🔗 <a href='{CAMPAIGN_URL}'>View Campaign</a>")
                         state["notified_claims_1490"] = True
 
-                # Referrals
+                # Referrals 143 & 145 Milestones Check
                 if camp_data["referrals"] is not None:
                     curr_refs = camp_data["referrals"]
                     if curr_refs >= 143 and not state["notified_ref_143"]:
@@ -222,7 +217,6 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error in stock loop: {e}", flush=True)
 
-        # 30-second wait with 1-second ticks for snappy command responses
         for _ in range(CHECK_INTERVAL):
             last_update_id = check_telegram_commands(last_update_id, state)
             time.sleep(1)
