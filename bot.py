@@ -2,6 +2,7 @@ import time
 import requests
 import re
 import os
+from html import unescape
 
 TG_TOKEN = os.environ.get("TG_TOKEN")
 TG_CHAT_ID = os.environ.get("TG_CHAT_ID")
@@ -42,35 +43,40 @@ def parse_campaign_data():
     try:
         res = requests.get(CAMPAIGN_URL, headers=headers, timeout=15)
         if res.status_code == 200:
-            html = res.text
-            
-            # Flexible MRR regex: handles "MRR:", optional tags/entities, and European spaces
-            mrr_match = re.search(r'MRR:[^0-9€&]*[€&euro;]?\s*([0-9\s]+(?:\.[0-9]+)?)', html, re.IGNORECASE)
-            if mrr_match:
-                clean_mrr = mrr_match.group(1).replace(" ", "").strip()
-                if clean_mrr:
-                    stats["mrr"] = float(clean_mrr)
+            raw_html = res.text
 
-            # Claims parse
-            if "Claimed in the campaign:" in html:
-                claim_part = html.split("Claimed in the campaign:")[1]
+            # 1. Clean HTML entities & tags to produce plain, normalized text
+            text_only = unescape(raw_html)
+            text_only = re.sub(r'<[^>]+>', ' ', text_only)
+            text_only = re.sub(r'[\xa0\s]+', ' ', text_only)  # Replace non-breaking spaces
+
+            # 2. Extract MRR (e.g. "MRR: € 3 088" or "MRR: 3088.50")
+            mrr_match = re.search(r'MRR[:\s]*€?\s*([0-9\s]+(?:\.[0-9]+)?)', text_only, re.IGNORECASE)
+            if mrr_match:
+                raw_val = mrr_match.group(1).replace(" ", "").strip()
+                if raw_val:
+                    try:
+                        stats["mrr"] = float(raw_val)
+                    except ValueError:
+                        pass
+
+            # 3. Extract Claims (e.g. "Claimed in the campaign: 1 255 / 4 900")
+            if "Claimed in the campaign:" in raw_html:
+                claim_part = raw_html.split("Claimed in the campaign:")[1]
                 raw_claims = claim_part.split("/")[0].strip()
                 clean_claims = "".join(c for c in raw_claims if c.isdigit())
                 if clean_claims:
                     stats["claims"] = int(clean_claims)
 
-            # Flexible Referrals regex: searches referral section for current tally
-            if "REFERRAL" in html.upper():
-                ref_chunk = html[html.upper().find("REFERRAL"):html.upper().find("REFERRAL") + 2500]
-                
-                # Check for "X so far", "X referrals", or progress "X /"
-                ref_match = re.search(r'(\d+)\s*(?:so far|referrals?|confirmed|\/)', ref_chunk, re.IGNORECASE)
-                if not ref_match:
-                    # Fallback: check percentage and progress bar markers
-                    ref_match = re.search(r'—\s*(\d+)', ref_chunk)
+            # 4. Extract Referrals (Look directly for "X so far" or "referrals — X")
+            # Matches patterns like: "50 referrals — 32 so far" or "143 so far"
+            ref_match = re.search(r'(\d+)\s+so far', text_only, re.IGNORECASE)
+            if not ref_match:
+                ref_match = re.search(r'referrals?\s*—\s*(\d+)', text_only, re.IGNORECASE)
 
-                if ref_match:
-                    stats["referrals"] = int(ref_match.group(1))
+            if ref_match:
+                stats["referrals"] = int(ref_match.group(1))
+
     except Exception as e:
         print(f"Error parsing campaign stats: {e}", flush=True)
     return stats
@@ -116,7 +122,7 @@ def check_telegram_commands(last_update_id, state):
             for update in data.get("result", []):
                 update_id = update["update_id"]
                 last_update_id = max(last_update_id, update_id)
-                
+
                 message = update.get("message", {})
                 chat_id = str(message.get("chat", {}).get("id"))
                 text = message.get("text", "").strip().lower()
