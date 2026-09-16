@@ -76,20 +76,28 @@ def handle_stats_command(state):
     claims_val = f"{stats['claims']}" if stats["claims"] is not None else "Pending..."
     refs_val = f"{stats['referrals']}" if stats["referrals"] is not None else "Pending..."
 
+    # Pre-format status strings without nested f-string quotes
+    t1_alerts = state.get("revenue_alerts_sent", 0)
+    t1_status = "✅ Alert Sent" if t1_alerts >= 2 else f"{t1_alerts}/2 Alerts"
+    t2_status = "✅ Reached" if state.get("notified_mrr_3985") else "⏳ Pending"
+    claims_status = "✅ Reached" if state.get("notified_claims_1490") else "⏳ Pending"
+    ref1_status = "✅ Reached" if state.get("notified_ref_143") else "⏳ Pending"
+    ref2_status = "✅ Reached" if state.get("notified_ref_145") else "⏳ Pending"
+
     msg = (
         "📊 <b>ETERNAL VÄINÄMÖINEN STATS</b>\n"
         "━━━━━━━━━━━━━━━━━━━\n\n"
         "💰 <b>MRR Progress</b>\n"
         f"• Current: <b>{mrr_val}</b>\n"
-        f"• Target 1 (€1950): {'✅ Alert Sent' if state['revenue_alerts_sent'] >= 2 else f'{state[\"revenue_alerts_sent\"]}/2 Alerts'}\n"
-        f"• Target 2 (€3985): {'✅ Reached' if state['notified_mrr_3985'] else '⏳ Pending'}\n\n"
+        f"• Target 1 (€1950): {t1_status}\n"
+        f"• Target 2 (€3985): {t2_status}\n\n"
         "🏆 <b>Claims Progress</b>\n"
         f"• Current Claims: <b>{claims_val}</b>\n"
-        f"• Target (1490): {'✅ Reached' if state['notified_claims_1490'] else '⏳ Pending'}\n\n"
+        f"• Target (1490): {claims_status}\n\n"
         "🤝 <b>Referral Milestones</b>\n"
         f"• Current Referrals: <b>{refs_val}</b>\n"
-        f"• Target 1 (143): {'✅ Reached' if state['notified_ref_143'] else '⏳ Pending'}\n"
-        f"• Target 2 (145): {'✅ Reached' if state['notified_ref_145'] else '⏳ Pending'}\n\n"
+        f"• Target 1 (143): {ref1_status}\n"
+        f"• Target 2 (145): {ref2_status}\n\n"
         "📦 <b>Active Stock Watches:</b>\n"
         f"<code>{', '.join(TARGET_PLANS)}</code>"
     )
@@ -142,7 +150,6 @@ if __name__ == "__main__":
         print(f"Initial update flush failed: {e}", flush=True)
 
     while True:
-        # Check inbound Telegram commands
         last_update_id = check_telegram_commands(last_update_id, state)
 
         # --- TASK 1: CHECK CAMPAIGN MILESTONES ---
